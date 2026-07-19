@@ -73,19 +73,32 @@ def reply(tosend):
     return temp
 
 
+RESPONSE_TIMEOUT = 2.0  # overall seconds to wait for a full response frame
+
+
 def response(Sport):
-    # Read a single response frame from the VMC and ACK it. Bounded by Sport's own
-    # serial read timeout (see Serial() call below) - never blocks forever.
-    bread = Sport.read(256)
-    debug(DBGFRAME, 'received from VMC', binascii.hexlify(bread))
-    frame = re.search(b'(\x07\xf0.{3}(?:[^\x07]|(?:\x07\x07))*\x07\x0f)', bread, flags=re.S)
-    if frame:
-        debug(DBGFRAME, 'frame received from VMC', binascii.hexlify(frame.group(1)))
-        Sport.write(binascii.a2b_hex('07f3'))  # ACK back to the VMC
-        return frame.group(1)
-    else:
-        debug(DBGFRAME, 'no frame detected in', binascii.hexlify(bread))
-        return None
+    # Read the response frame from the VMC and ACK it. A single Sport.read(256)
+    # (bounded by Sport's own per-read serial timeout) isn't enough: some commands
+    # (temperatures, device info, bypass, valve status) take the VMC noticeably
+    # longer to answer than others, and their reply can arrive as more than one
+    # chunk - found by comparing which fields silently went missing from
+    # VMCbinjson.cgi output during testing. Keep accumulating chunks and checking
+    # for a complete frame until RESPONSE_TIMEOUT, instead of giving up after one
+    # short read - still bounded, just patient enough for a slow reply.
+    bread = b''
+    deadline = time.time() + RESPONSE_TIMEOUT
+    while time.time() < deadline:
+        chunk = Sport.read(256)
+        if chunk:
+            bread += chunk
+            debug(DBGFRAME, 'received from VMC', binascii.hexlify(bread))
+            frame = re.search(b'(\x07\xf0.{3}(?:[^\x07]|(?:\x07\x07))*\x07\x0f)', bread, flags=re.S)
+            if frame:
+                debug(DBGFRAME, 'frame received from VMC', binascii.hexlify(frame.group(1)))
+                Sport.write(binascii.a2b_hex('07f3'))  # ACK back to the VMC
+                return frame.group(1)
+    debug(DBGFRAME, 'no frame detected within', RESPONSE_TIMEOUT, 's, got', binascii.hexlify(bread))
+    return None
 
 
 # initialize globals
