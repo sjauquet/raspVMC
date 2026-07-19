@@ -46,7 +46,7 @@ class VMC:
  				self.cmd = newframe[1]
                         	self.datalen = newframe[2]
           	                self.ck = newframe[len(newframe)-1]
-                	        if self.Checksum():         #verify the checksum
+                	        if self.Checksum() != -1:         #verify the checksum (Checksum() returns -1, which is truthy, on failure)
                         		self.Payload()          #extract the payload when checksum OK
                    			self.getvalue.get(self.cmd,self.default)(self)
 		elif  len(args)>1:			#more then one argument this is a command with data
@@ -272,7 +272,7 @@ class VMC:
                                 self.cmd = self.frame[1]
                                 self.datalen = self.frame[2]
                                 self.ck = self.frame[len(self.frame)-1]
-                                if self.Checksum():         #verify the checksum
+                                if self.Checksum() != -1:         #verify the checksum (Checksum() returns -1, which is truthy, on failure)
                                         self.Payload()          #extract the payload when checksum OK
                                         self.getvalue.get(self.cmd,self.default)(self)
 
@@ -324,6 +324,23 @@ class VMC:
         def getbypass(self,socket):
                 self.GetResp(b'\xdf',socket)
                 return(self)
+
+	def setfanlevels(self,socket,extraction_absent,extraction_v1,extraction_v2,admission_absent,admission_v1,admission_v2,extraction_v3,admission_v3):
+		# cmd 0xCF "Ventilationsstufe setzen" - writes the full exhaust/supply % table for all 4 levels at once
+		# (only ACK is returned, no data frame, so do not GetResp() on the write itself - re-read afterwards instead)
+		self.cmd=b'\xcf'
+		self.CMFrame(chr(extraction_absent),chr(extraction_v1),chr(extraction_v2),chr(admission_absent),chr(admission_v1),chr(admission_v2),chr(extraction_v3),chr(admission_v3),chr(0))
+		socket.sendall(self.FullFrame())
+		time.sleep(0.25)
+		self.getfanconfig(socket)
+		return self
+
+	def setextraction(self,socket,admission_percent=0):
+		# night-cooling helper: keep exhaust (extraction) untouched, cut supply (admission)
+		# air at every level down to admission_percent (0 = pure extraction only)
+		self.getfanconfig(socket)
+		fs = self.fansettings['extraction']
+		return self.setfanlevels(socket,fs['absent'],fs['vitesse1'],fs['vitesse2'],admission_percent,admission_percent,admission_percent,fs['vitesse3'],admission_percent)
 
 	def getAll(self,socket):
 		self.getdevinfo(socket)

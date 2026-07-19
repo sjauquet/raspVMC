@@ -24,6 +24,7 @@ form = cgi.FieldStorage()
 speed = form.getvalue('speed')
 # Create a TCP/IP socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.settimeout(5)  # never let this CGI (and its Apache worker) hang forever
 
 # Connect the socket to the port where the server is listening
 server_address = ('localhost', 10000)

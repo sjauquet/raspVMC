@@ -22,6 +22,7 @@ config.read('/etc/VMC/VMC.ini')
 
 # Create a TCP/IP socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.settimeout(5)  # never let this CGI (and its Apache worker) hang forever
 
 # Connect the socket to the port where the server is listening
 server_address = (string.replace(config.get('client','server'),'"',''),  int(string.replace(config.get('server','port'),'"','')))
@@ -38,4 +39,4 @@ if int(tconf) in range(0,30):
 	sys.stdout.flush()
 else:
 	print "invalid temperature value: ", tconf, " must be in range [0..30]"
-socket.close()
+sock.close()

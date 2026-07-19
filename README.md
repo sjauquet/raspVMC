@@ -1,66 +1,103 @@
-# raspVMC
-Software suite to interface a ventilation system (Zehnder, storkair) with external entities, multiples clients are handled
-A server module interfaces with the ventilation unit via an SR232 (serial) connection
-Clients connect to the server either via TCP/IP connection or via a virtual serial device provided by a socat instance (the later being use by clients such as FHEM, see www.fhem.de, Device comfoair)
-The intend is to make it also available for hardware devices (Comfosense, CCEASE) connecting via another serial port.
-A library is provided that takes care of the protocol.
-The server and clients are written in Python.
-Example clients are provided, command line client.py outputs a json structure with data read from the ventilation unit, VMCmysql.py reads a set of data and writes them to a mysql database, a set of web pages and associated cgi clients provide web access to the ventilation unit.
+# raspVMC (hardened, simplified fork)
 
+This is a fork of [jcoenencom/raspVMC](https://github.com/jcoenencom/raspVMC) -
+all credit for the original protocol implementation, server/CGI architecture
+and web UI goes to that project. This fork exists because a long-running
+deployment (Zehnder/StorkAir WHR960, Raspberry Pi, Home Assistant) kept
+freezing for reasons that took a fair amount of debugging to actually pin
+down, and because KNX/MySQL/ConfoSense support couldn't be tested by this
+fork's maintainer and were dropped rather than carried along untested.
 
-INSTALLATION
+If you need KNX, MySQL, or a ConfoSense/CCEASE bridge, use the upstream
+project instead - the wire protocol handling (`VMC.py`) is unchanged and
+compatible either way, so patches tend to move between the two easily.
 
-Download the code from Github
+## What this fork is for
 
-unzip it and run install.bash from the directory
+Bridging a Zehnder/StorkAir ComfoAir-family balanced ventilation unit
+(WHR930, WHR960, CA350, ...) connected over RS232 to a Raspberry Pi, exposing
+it as JSON over HTTP (CGI), for consumption by Home Assistant or anything
+else that can poll a URL.
 
-The installation will install the following things
+```
+Home Assistant --(HTTP, polling)--> CGI scripts --(TCP)--> server.py --(RS232)--> VMC unit
+```
 
-updates the libraries
-install python-serial moddule
-apache2 & php: the web server that will serve the ventilation pages
-socat : serial connector, used to connect ConfSense unit and FHEM driver
-FHEM: perl written domotica program (www.fhem.de), a VMC instance is provided (see on http:raspberry:8083/fhem?room=VMC)
-      The software provides graphical display of periodically read temperatures and fans speed, it uses its own driver
+Tested on Raspbian Wheezy (yes, that old) with Python 2.7, Apache 2.2 +
+mod_cgi, and a WHR960. Should work unmodified on any Debian-family Pi image
+old enough to still ship Python 2 by default.
 
-A line is inserted in inittab to restart the program in case of crash
+## What changed vs. upstream, and why
 
-At the end of the install process "init q" is issued to fire up the server
+- **`server.py` rewritten around upstream's later `(client, frame)` queue
+  design** (not the older `sender`/`message_queues` FIFO pairing this fork's
+  maintainer had been running for years) - see
+  `docs/TROUBLESHOOTING.md` for the actual multi-day debugging story of why
+  the old design would occasionally freeze the whole process solid until
+  manually killed.
+- **ConfoSense/CCEASE bridge, telnet-style control port, KNX and MySQL
+  support removed.** None of it could be tested against this fork's changes.
+  `VMCknx.py`, `knx.ini`, `config.py` were removed; `install.bash` no longer
+  calls the interactive config wizard and ships a ready-to-edit `VMC.ini`
+  instead.
+- **A heartbeat file** (`[debug] heartbeat` in `VMC.ini`, tmpfs by default -
+  zero SD wear) written every 5 seconds, so a future freeze can actually be
+  diagnosed instead of guessed at.
+- **CGI scripts get a socket timeout** and a catch-all exception handler, so
+  a server-side problem fails fast (~5s) with a readable JSON error instead
+  of hanging the calling Apache worker for up to an hour.
+- **A checksum-validation bug fixed** in `VMC.py`: `Checksum()` returned `-1`
+  (which is truthy in Python) on a failed checksum, so corrupted frames were
+  silently parsed as if valid.
+- **`0xCF` ("set ventilation levels") exposed**, via `setfanlevels()` /
+  `setextraction()` in `VMC.py` and `VMCsetExtraction.cgi` - lets you reduce
+  supply air independently of exhaust (useful for night cooling). **Read
+  `docs/EXTRACTION_MODE.md` before wiring this into any automation** - it
+  documents a real gap between this and the unit's own front-panel button
+  that matters if you're relying on it as a safety fallback.
+- `fix_permissions.sh` added: GUI SFTP clients (WinSCP and friends) commonly
+  reset the executable bit on file overwrite, breaking Apache/`init` in a way
+  that looks unrelated at first. Run it after every deploy, or configure your
+  client to preserve permissions.
+- `.gitattributes` added to normalize new commits to LF line endings for
+  scripts - some files in this codebase's history had Windows (CRLF) line
+  endings, which breaks the shebang line's interpreter lookup on Linux (see
+  `docs/TROUBLESHOOTING.md`).
 
-For jessie install VMCserver.service in /etc/systemd/system/  (sudo cp VMCserver.service in /etc/systemd/system/)
+## Installation
 
-run: sudo systemctl start VMCserver
-To start it up when the configuration has been finalized.
+1. `git clone` this repo onto the Pi (or download+unzip).
+2. `./install.bash` - installs apache2/socat/python-serial, optionally FHEM,
+   copies `VMC.ini` to `/etc/VMC/VMC.ini` and opens it for editing (set
+   `[VMC] device=` to your serial port), deploys the CGI scripts and
+   `server.py`, and adds the `inittab` respawn entry.
+3. On Jessie or later, use `VMCserver.service` (systemd) instead of the
+   `inittab` line - see the comments in `install.bash`/`VMCserver.service`.
+4. `sudo cp fix_permissions.sh /home/pi/` and run it once, then again after
+   any future file transfer.
+5. Test: `curl http://localhost/cgi-bin/VMCbinjson.cgi` should return a JSON
+   blob with `config`/`data`/`device` keys.
 
-stderr is redirected to /var/log/VMCerr.log (crash log)
+## Home Assistant
 
-Configuration file /etc/VMC/VMC.ini
+See `home-assistant/configuration.yaml.example` for a REST sensor + a full
+set of template sensors (temperatures, fan speeds/RPM/%, usage counters,
+bypass status, extraction-mode monitoring).
 
-Sections:
+## Extraction-only / night cooling mode
 
-[VMC] defines the serial device where is attached the VMC
+`VMCsetExtraction.cgi?state=on|off` and `VMCextractionWatchdog.py` implement
+this, but **read `docs/EXTRACTION_MODE.md` first** - there's a real
+difference between how this and the physical front-panel button achieve the
+same airflow effect, with consequences for what actually happens if your
+automation stack goes down while it's active.
 
-[mysql] defines the mysql (if used) information
+## Other docs
 
-[server]
-bind => address responding to client (empty means all addresses)
-port => port where clients connect, (sometime 10000 is used be web admin tool)
+- `docs/PROTOCOL.md` - RS232 protocol quick reference and source.
+- `docs/TROUBLESHOOTING.md` - the freeze/permissions/CRLF stories in detail.
+- `docs/EXTRACTION_MODE.md` - the extraction-mode software-vs-button gap.
 
-[client]
-server => defines the address of the server for the clients, this is used by clients running on raspberry not running the server.
+## License
 
-[socat]
-PTY defines a virtual port to be used by FHEM
-
-[CCEASE]
-tty defines the serial device to which is attached the CCEASE/Confosense
-port define the server port for the CCEASE connexion
-
-[debug]
-level defines the debug level
-log defines the log file
-
-[knx] definition of the knx interface
-gateway eibd or eibnetmux gateway
-followed by a list of variables from the json exemple
-Tconfort=9/5/0,dpt9     use the json's Tconfort, write to bus GAD 9/5/0 using dpt9 encoding (temperature) 
+GPL-2.0, same as upstream (see `LICENSE`).

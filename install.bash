@@ -55,10 +55,10 @@ else
 	fi
    done
 fi
-echo configuring the station in VMC.ini.new
-./config.py
+echo "this fork ships a ready-to-edit VMC.ini (no more mysql/KNX/ConfoSense interactive setup - see README.md)"
+echo "edit the [VMC] device= line below to match your serial port before continuing"
 
-echo installing configuration files 
+echo installing configuration files
 
 if [ ! -d "/etc/VMC" ]; then
   sudo mkdir /etc/VMC
@@ -68,7 +68,8 @@ if [ -e "/etc/VMC/VMC.ini" ]; then
   echo save old VMC.ini to /etc/VMC/VMC.ini.old
   sudo mv /etc/VMC/VMC.ini /etc/VMC/VMC.ini.old
 fi
-sudo cp VMC.ini.new /etc/VMC/VMC.ini
+sudo cp VMC.ini /etc/VMC/VMC.ini
+${EDITOR:-nano} /etc/VMC/VMC.ini
 
 if [ -e /opt/fhem/fhem.cfg ]; then
 #file exist check if VMC already defined (normally should be adapted with device as stated in config run)
@@ -93,7 +94,10 @@ sudo cp VMC?.html /var/www
 sudo cp -r json* /var/www/
 sudo cp *.cgi /usr/lib/cgi-bin
 sudo chmod a+x /usr/lib/cgi-bin/VMC*
-sudo cp VMC.pyc /usr/lib/pymodules/python2.7/VMC.pyc
+sudo chmod a+x server.py
+sudo cp VMC.py /usr/lib/pymodules/python2.7/VMC.py
+echo "if a stray VMC.pyc exists in /usr/lib/pymodules/python2.7/, remove it - Python must recompile from the .py source, not run a stale cached bytecode"
+sudo rm -f /usr/lib/pymodules/python2.7/VMC.pyc
 echo cleanup
 cd
 rm raspVMC.zip

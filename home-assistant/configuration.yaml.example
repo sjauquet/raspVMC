@@ -1,0 +1,122 @@
+# Home Assistant example: polls VMCbinjson.cgi once a minute and exposes every
+# field as its own sensor. Replace <raspberry-pi-ip> with your Pi's address.
+#
+# 1) A REST sensor fetches the whole JSON blob and exposes its top-level keys
+#    ("config", "data", "device") as attributes on one sensor.
+# 2) Template sensors below pick individual values out of those attributes.
+#
+# See docs/PROTOCOL.md for what each field means, and docs/EXTRACTION_MODE.md
+# before wiring "Extraction Etat" into anything beyond monitoring.
+
+rest:
+  - resource: "http://<raspberry-pi-ip>/cgi-bin/VMCbinjson.cgi"
+    scan_interval: 60
+    sensor:
+      - name: "All Data Sensor"
+        unique_id: "vmcrest_all_data_sensor"
+        value_template: "{{ now() }}"
+        json_attributes:
+          - config
+          - data
+          - device
+
+template:
+  - sensor:
+      # Mode extraction (front-panel button state) - monitoring only, see
+      # docs/EXTRACTION_MODE.md for why this should not drive automations.
+      - name: "Extraction Etat"
+        unique_id: "vmcrest_extraction_etat"
+        state: "{{ state_attr('sensor.all_data_sensor', 'config').ventilateurs.extractionetat }}"
+
+      - name: "Vitesse"
+        unique_id: "vmcrest_vitesse"
+        unit_of_measurement: "e Vitesse"
+        state: "{{ state_attr('sensor.all_data_sensor', 'config').ventilateurs.vitesse }}"
+
+      - name: "Bypass Mode"
+        unique_id: "vmcrest_bypass_mode"
+        state: "{{ state_attr('sensor.all_data_sensor', 'data').bypass.mode }}"
+
+      - name: "Tairneuf Temperature"
+        unique_id: "vmcrest_tairneuf_temperature"
+        unit_of_measurement: "°C"
+        state: "{{ state_attr('sensor.all_data_sensor', 'data').temperature.Tairneuf }}"
+
+      - name: "Tconfort Temperature"
+        unique_id: "vmcrest_tconfort_temperature"
+        unit_of_measurement: "°C"
+        state: "{{ state_attr('sensor.all_data_sensor', 'data').temperature.Tconfort }}"
+
+      - name: "Textrait Temperature"
+        unique_id: "vmcrest_textrait_temperature"
+        unit_of_measurement: "°C"
+        state: "{{ state_attr('sensor.all_data_sensor', 'data').temperature.Textrait }}"
+
+      - name: "Trepris Temperature"
+        unique_id: "vmcrest_trepris_temperature"
+        unit_of_measurement: "°C"
+        state: "{{ state_attr('sensor.all_data_sensor', 'data').temperature.Trepris }}"
+
+      - name: "Tsoufflage Temperature"
+        unique_id: "vmcrest_tsoufflage_temperature"
+        unit_of_measurement: "°C"
+        state: "{{ state_attr('sensor.all_data_sensor', 'data').temperature.Tsoufflage }}"
+
+      - name: "Usage Absent"
+        unique_id: "vmcrest_usage_absent"
+        unit_of_measurement: "Hours"
+        state: "{{ state_attr('sensor.all_data_sensor', 'data').usage.absent }}"
+
+      - name: "Antigel"
+        unique_id: "vmcrest_antigel"
+        unit_of_measurement: "Hours"
+        state: "{{ state_attr('sensor.all_data_sensor', 'data').usage.antigel }}"
+
+      - name: "Bypass Usage"
+        unique_id: "vmcrest_bypass_usage"
+        unit_of_measurement: "Hours"
+        state: "{{ state_attr('sensor.all_data_sensor', 'data').usage.bypass }}"
+
+      - name: "Filtres Usage"
+        unique_id: "vmcrest_filtres_usage"
+        unit_of_measurement: "Hours"
+        state: "{{ state_attr('sensor.all_data_sensor', 'data').usage.filtres }}"
+
+      - name: "Vitesse1 Usage"
+        unique_id: "vmcrest_vitesse1_usage"
+        unit_of_measurement: "Hours"
+        state: "{{ state_attr('sensor.all_data_sensor', 'data').usage.vitesse1 }}"
+
+      - name: "Vitesse2 Usage"
+        unique_id: "vmcrest_vitesse2_usage"
+        unit_of_measurement: "Hours"
+        state: "{{ state_attr('sensor.all_data_sensor', 'data').usage.vitesse2 }}"
+
+      - name: "Vitesse3 Usage"
+        unique_id: "vmcrest_vitesse3_usage"
+        unit_of_measurement: "Hours"
+        state: "{{ state_attr('sensor.all_data_sensor', 'data').usage.vitesse3 }}"
+
+      - name: "Bypass Valve Etat"
+        unique_id: "vmcrest_bypass_valve_etat"
+        state: "{{ state_attr('sensor.all_data_sensor', 'data').valvesetat.bypass }}"
+
+      - name: "Extraction Pourcent"
+        unique_id: "vmcrest_extraction_pourcent"
+        unit_of_measurement: "%"
+        state: "{{ state_attr('sensor.all_data_sensor', 'data').ventilateurs.extraitpourcent }}"
+
+      - name: "Extraction RPM"
+        unique_id: "vmcrest_extraction_rpm"
+        unit_of_measurement: "RPM"
+        state: "{{ state_attr('sensor.all_data_sensor', 'data').ventilateurs.extraitrpm }}"
+
+      - name: "Soufflage Pourcent"
+        unique_id: "vmcrest_soufflage_pourcent"
+        unit_of_measurement: "%"
+        state: "{{ state_attr('sensor.all_data_sensor', 'data').ventilateurs.soufflagepourcent }}"
+
+      - name: "Soufflage RPM"
+        unique_id: "vmcrest_soufflage_rpm"
+        unit_of_measurement: "RPM"
+        state: "{{ state_attr('sensor.all_data_sensor', 'data').ventilateurs.soufflagerpm }}"

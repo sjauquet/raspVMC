@@ -1,0 +1,6 @@
+* text=auto eol=lf
+*.py text eol=lf
+*.cgi text eol=lf
+*.sh text eol=lf
+*.ini text eol=lf
+*.pyc binary
