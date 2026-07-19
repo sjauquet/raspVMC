@@ -215,7 +215,7 @@ clients = []
 messages = Queue.Queue()
 
 while inputs:
-
+  try:
     # 5s timeout so the loop always cycles even during silence, keeping the
     # heartbeat file (and any pending cleanup) alive.
     readable, writable, exceptional = select.select(inputs, outputs, inputs, 5)
@@ -240,7 +240,12 @@ while inputs:
             # for the next response(Sport) call.
             pass
         elif s in clients:
-            data = s.recv(1024)
+            try:
+                data = s.recv(1024)
+            except socket.error as e:
+                # client reset the connection instead of closing it cleanly
+                debug(DBGCLIENT, 'client connection reset:', str(e))
+                data = None
             if data:
                 # A single recv() can contain more than one complete request frame
                 # (the VMC.py client sends its next command immediately once it has
@@ -287,7 +292,15 @@ while inputs:
                     next_msg = response(Sport)
                     if next_msg is not None:
                         debug(DBGFRAME, 'sending', binascii.hexlify(next_msg), 'to client')
-                        client.send(next_msg)
+                        try:
+                            client.send(next_msg)
+                        except socket.error as e:
+                            # The client gave up and closed its socket (e.g. its own
+                            # timeout elapsed) before the VMC's reply made it back -
+                            # found live as an uncaught "Broken pipe" that crashed the
+                            # whole server for every other client too. Losing this one
+                            # reply is fine; the CGI script already got its own error.
+                            debug(DBGCLIENT, 'client gone, could not deliver reply:', str(e))
                 else:
                     debug(DBGFRAME, 'not expecting a reply')
 
@@ -312,3 +325,14 @@ while inputs:
             lastHeartbeat = now
 
     time.sleep(0.008)
+  except (KeyboardInterrupt, SystemExit):
+    raise
+  except Exception as e:
+    # Last-resort safety net: nothing anticipated should reach here (the specific
+    # failure points above are already handled), but this server controls house
+    # ventilation - an unanticipated bug should log and keep running, not take the
+    # whole bridge down for every client because of one bad exchange. Found the
+    # need for this the hard way: an uncaught "Broken pipe" on client.send() used
+    # to kill the entire process.
+    syslog.syslog('VMCserver: unexpected error in main loop, continuing: {}'.format(str(e)))
+    debug(DBGCLIENT, 'unexpected error in main loop:', str(e))
