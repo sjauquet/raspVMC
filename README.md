@@ -1,5 +1,12 @@
 # raspVMC (hardened, simplified fork)
 
+> **Status: not fully field-tested yet.** The bug fixes and architecture
+> change described below are based on careful analysis (see
+> `docs/TROUBLESHOOTING.md`) and worked in initial testing, but this fork is
+> currently running its first extended real-world validation (one WHR960 +
+> Raspberry Pi setup). Treat it as "should work, not yet proven over weeks of
+> uptime" until this notice is removed. Feedback and issues welcome.
+
 This is a fork of [jcoenencom/raspVMC](https://github.com/jcoenencom/raspVMC) -
 all credit for the original protocol implementation, server/CGI architecture
 and web UI goes to that project. This fork exists because a long-running
