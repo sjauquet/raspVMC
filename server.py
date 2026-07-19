@@ -242,11 +242,28 @@ while inputs:
         elif s in clients:
             data = s.recv(1024)
             if data:
-                frame = pdata.match(data)  # extract the frame, filtering out ACKs
-                if frame:
-                    debug(DBGFRAME, 'received', binascii.hexlify(data), 'from client')
-                    messages.put((s, frame.group(1)))  # store (client, frame) to send
-                    s.send('\x07\xf3')  # ack the client's frame
+                # A single recv() can contain more than one complete request frame
+                # (the VMC.py client sends its next command immediately once it has
+                # read a response, and the OS is free to coalesce both writes into
+                # one chunk here) - use findall(), not match(), or every frame past
+                # the first in a batch is silently dropped. Found live: getalltemp/
+                # getdevinfo/getbypass kept going missing from VMCbinjson.cgi output
+                # with no error, traced via [debug] level=8 frame logging to exactly
+                # this - two requests arriving concatenated, the second discarded.
+                frames = pdata.findall(data)
+                if frames:
+                    debug(DBGFRAME, 'received', binascii.hexlify(data), 'from client', '({} frame(s))'.format(len(frames)))
+                    for frame in frames:
+                        messages.put((s, frame))  # store (client, frame) to send
+                # Deliberately not acking here: VMC.py's GetResp() does a single
+                # recv(64) expecting the real response frame directly, not a
+                # separate intermediate ACK. Sending one anyway (as upstream does)
+                # races with the real, slower response: the client's recv() can
+                # return with just this ACK, decide (wrongly) that it has its
+                # answer, and move on to the next command while the real response
+                # is still in flight - the exact cause of the frame-coalescing
+                # above. The 0x07 0xF3 ACK is a VMC<->server protocol detail; the
+                # server<->client link here doesn't need one.
             else:
                 # empty read = client closed the connection
                 debug(DBGCLIENT, 'closing client connection after reading no data')
