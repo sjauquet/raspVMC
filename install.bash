@@ -81,10 +81,14 @@ if [ -e /opt/fhem/fhem.cfg ]; then
 	fi
 fi
 echo patching inittab automatic restart in case of crash
+# Use the directory this script is actually running from, not a hardcoded path -
+# a hardcoded "raspVMC-master" (matching GitHub's zip-download folder name) breaks
+# as soon as someone `git clone`s instead, which creates a plain "raspVMC" folder.
+INSTALLDIR="$(cd "$(dirname "$0")" && pwd)"
 if (! grep -q server.py /etc/inittab ); then
-        echo "vm:2345:respawn:/home/pi/raspVMC-master/server.py >>/var/log/VMCerr.log 2>&1" | sudo tee -a /etc/inittab
+        echo "vm:2345:respawn:$INSTALLDIR/server.py >>/var/log/VMCerr.log 2>&1" | sudo tee -a /etc/inittab
 else
-        sudo sed -i '/server.py/ c\vm:2345:respawn:\/home\/pi\/raspVMC-master\/server.py >>\/var\/log\/VMCerr.log 2>\&1' /etc/inittab
+        sudo sed -i "/server.py/ c\\vm:2345:respawn:$INSTALLDIR/server.py >>/var/log/VMCerr.log 2>\&1" /etc/inittab
 fi
 echo activating the server
 sudo init q

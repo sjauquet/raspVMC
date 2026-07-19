@@ -5,8 +5,8 @@ After=syslog.target network.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/home/pi/raspVMC-master
-ExecStart=/home/pi/raspVMC-master/server.py
+WorkingDirectory=/home/pi/raspVMC
+ExecStart=/home/pi/raspVMC/server.py
 StandardOutput=syslog
 StandardError=syslog
 

@@ -1,5 +1,38 @@
 # Troubleshooting
 
+## After `install.bash`, killing `server.py` doesn't bring it back
+
+Check what's actually in `/etc/inittab`:
+
+```bash
+grep server.py /etc/inittab
+```
+
+`install.bash` writes the respawn entry using the directory it was run from,
+which is correct as long as you ran it from where you actually cloned/unzipped
+the repo. If the path in that line doesn't exist (e.g. it still says
+`raspVMC-master` from an old install, but you `git clone`d into plain
+`raspVMC`), `init` fails to exec it silently, and after a few rapid failures
+disables respawn for that entry for 5 minutes ("respawning too fast"). Fix
+the path and reload:
+
+```bash
+sudo sed -i '/server.py/ c\vm:2345:respawn:/home/pi/raspVMC/server.py >>/var/log/VMCerr.log 2>&1' /etc/inittab
+sudo init q
+```
+
+(adjust the path to wherever you actually cloned the repo). The same applies
+to `VMCserver.service` if you're on systemd - check `WorkingDirectory`/
+`ExecStart` match your actual clone location.
+
+Also note: the heartbeat file (`/run/vmc/heartbeat.log`) can be *stale* -
+written by whatever `server.py` was running last, right up until it was
+killed. Its mere presence isn't proof the current process is alive; check
+the timestamp, and check `ps aux | grep server.py` for a PID that started
+recently. The heartbeat line format also changed with this fork (`inputs=
+outputs= clients= messages_q=`, no `ready=`/`sender_q=`) - if you see the old
+field names, you're still looking at output from a pre-fork `server.py`.
+
 ## "It just stops responding sometimes, then comes back on its own"
 
 This was the original motivation for this fork. If you deployed this from a
