@@ -34,6 +34,26 @@ through the same mechanism, and that difference matters.
   method - treat it as a strong warning, not a certainty, and verify on your
   own unit before relying on it.
 
+## `extractionetat` has counter-intuitive polarity
+
+`config.ventilateurs.extractionetat` (from `VMC.py`'s `Rfansettings()`, byte
+labeled "Abluft Ventilator aktiv" / "exhaust fan active" in the protocol
+reference) reads **1 in normal balanced mode and 0 when extraction-only mode
+is active** - the opposite of what the name suggests. Taken literally,
+"exhaust fan active" should stay 1 in both cases: the extract fan keeps
+running in extraction-only mode too, it's the *supply* fan that stops.
+
+What's actually observed: this bit tracks whether **both fans are running in
+balanced operation** (1) versus **asymmetric operation** (0) - regardless of
+which fan is the odd one out, and regardless of whether extraction-only mode
+was triggered via the button or via software. The 2011 reverse-engineered
+protocol doc's byte label is best treated as an approximate guess, not a
+guarantee - trust what you measure over what the label says. The Home
+Assistant example in `home-assistant/configuration.yaml.example` inverts this
+in the template itself (`extractionetat == 0`) so the resulting sensor
+("Extraction Active") reads `true` exactly when extraction-only mode is
+actually active, matching its name.
+
 We could not find a documented RS232 command matching the button's actual
 behavior (see `docs/PROTOCOL.md`'s source PDF) - it may be a firmware-local
 feature that never goes out over RS232 at all. If you find it (e.g. by
@@ -71,7 +91,7 @@ just monitor it:
   which would make it self-healing independent of any computer.
 
 Given all this, the safest default is what this fork's author actually
-ships: use `Extraction Etat` (`config.ventilateurs.extractionetat`) purely
-as a **read-only monitoring sensor** in Home Assistant, and leave
-`VMCsetExtraction.cgi`/`VMCextractionWatchdog.py` undeployed unless you've
-worked through the risk above for your own setup.
+ships: use `Extraction Active` (`config.ventilateurs.extractionetat`,
+inverted - see above) purely as a **read-only monitoring sensor** in Home
+Assistant, and leave `VMCsetExtraction.cgi`/`VMCextractionWatchdog.py`
+undeployed unless you've worked through the risk above for your own setup.

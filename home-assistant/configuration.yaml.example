@@ -1,37 +1,39 @@
 # Home Assistant example: polls VMCbinjson.cgi once a minute and exposes every
-# field as its own sensor. Replace <raspberry-pi-ip> with your Pi's address.
+# field as its own sensor. Replace 192.168.xxx.xxx with your Pi's address.
 #
-# 1) A REST sensor fetches the whole JSON blob and exposes its top-level keys
-#    ("config", "data", "device") as attributes on one sensor.
+# 1) A REST sensor (legacy "platform: rest" style, under the "sensor:" domain)
+#    fetches the whole JSON blob and exposes its "config"/"data" keys as
+#    attributes on one sensor. The value_template dummy '1' is a workaround:
+#    the actual JSON payload is bigger than HA's 255-character state limit, so
+#    the real content only lives in the attributes, not the state itself.
 # 2) Template sensors below pick individual values out of those attributes.
 #
 # See docs/PROTOCOL.md for what each field means, and docs/EXTRACTION_MODE.md
-# before wiring "Extraction Etat" into anything beyond monitoring.
-
-rest:
-  - resource: "http://<raspberry-pi-ip>/cgi-bin/VMCbinjson.cgi"
-    scan_interval: 60
-    sensor:
-      - name: "All Data Sensor"
-        unique_id: "vmcrest_all_data_sensor"
-        value_template: "{{ now() }}"
-        json_attributes:
-          - config
-          - data
-          - device
+# before wiring "Extraction Active" into anything beyond monitoring.
 
 template:
   - sensor:
-      # Mode extraction (front-panel button state) - monitoring only, see
-      # docs/EXTRACTION_MODE.md for why this should not drive automations.
-      - name: "Extraction Etat"
-        unique_id: "vmcrest_extraction_etat"
-        state: "{{ state_attr('sensor.all_data_sensor', 'config').ventilateurs.extractionetat }}"
+      # Extraction Active (true = mode extraction seule actif, false = ventilation
+      # normale équilibrée). Based on config.ventilateurs.extractionetat, whose raw
+      # polarity is counter-intuitive (1=normal, 0=extraction active) - inverted
+      # here so the sensor's boolean value matches its name. See
+      # docs/EXTRACTION_MODE.md for the full story - monitoring only, do not use
+      # this to drive an automation without reading that first.
+      - name: "Extraction Active"
+        unique_id: "vmcrest_extraction_active"
+        state: "{{ state_attr('sensor.all_data_sensor', 'config').ventilateurs.extractionetat | int == 0 }}"
 
       - name: "Vitesse"
         unique_id: "vmcrest_vitesse"
         unit_of_measurement: "e Vitesse"
         state: "{{ state_attr('sensor.all_data_sensor', 'config').ventilateurs.vitesse }}"
+
+      # Vitesse Adjusted: same value, shifted by -1 (0=absent, 1..3=vitesse 1..3)
+      # instead of the raw protocol encoding (1=absent, 2..4=vitesse 1..3).
+      - name: "Vitesse Adjusted"
+        unique_id: "vmcrest_vitesse_adjusted"
+        unit_of_measurement: "e Vitesse"
+        state: "{{ (states('sensor.vmcrest_vitesse') | float(0) - 1) | int }}"
 
       - name: "Bypass Mode"
         unique_id: "vmcrest_bypass_mode"
@@ -120,3 +122,25 @@ template:
         unique_id: "vmcrest_soufflage_rpm"
         unit_of_measurement: "RPM"
         state: "{{ state_attr('sensor.all_data_sensor', 'data').ventilateurs.soufflagerpm }}"
+
+      # Raw JSON Data: handy for debugging in Developer Tools > Template, or for
+      # dashboards that want the full structure rather than one sensor per field.
+      - name: "VMC Rest API Raw JSON Data"
+        unique_id: "vmcrest_raw_json_data"
+        state: "{{ state_attr('sensor.all_data_sensor', 'json') }}"
+        attributes:
+          config: "{{ state_attr('sensor.all_data_sensor', 'config') | tojson }}"
+          data: "{{ state_attr('sensor.all_data_sensor', 'data') | tojson }}"
+
+sensor:
+  # REST sensor to fetch the JSON data - legacy "platform: rest" style (works
+  # across old and current HA versions alike).
+  - platform: rest
+    resource: http://192.168.xxx.xxx/cgi-bin/VMCbinjson.enhanced.cgi
+    name: "All Data Sensor"
+    scan_interval: 60
+    timeout: 20
+    value_template: '1'  # dummy value, not used; avoids the "State max length is 255 characters" error
+    json_attributes:
+      - config
+      - data
