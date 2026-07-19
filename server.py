@@ -215,14 +215,17 @@ while inputs:
             inputs.append(connection)
             clients.append(connection)
         elif s is portno:
-            # Unsolicited bytes from the VMC outside of a request/response cycle
-            # (noise, or a frame that arrived just as we stopped expecting one).
-            # Drain and ACK them here so they don't linger in the serial buffer
-            # and corrupt the next real response(Sport) read.
-            bread = Sport.read(256)
-            if bread:
-                debug(DBGFRAME, 'unsolicited data from VMC', binascii.hexlify(bread))
-                Sport.write(binascii.a2b_hex('07f3'))
+            # Deliberately do nothing here. All VMC reads happen synchronously
+            # inside response(Sport), called right after writing a command in the
+            # writable-handling section below. Reading here too would race with
+            # that: if portno shows up in both readable and writable in the same
+            # select() cycle, an eager read here can steal the very bytes
+            # response(Sport) is about to wait for, leaving it with nothing (or a
+            # shifted fragment that fails checksum) - this was a real regression,
+            # found by comparing field-by-field JSON output during testing. Any
+            # bytes sitting in the OS serial buffer are perfectly safe to leave
+            # for the next response(Sport) call.
+            pass
         elif s in clients:
             data = s.recv(1024)
             if data:
