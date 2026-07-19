@@ -19,6 +19,11 @@ If you need KNX, MySQL, or a ConfoSense/CCEASE bridge, use the upstream
 project instead - the wire protocol handling (`VMC.py`) is unchanged and
 compatible either way, so patches tend to move between the two easily.
 
+![Home Assistant dashboard showing live VMC data: temperatures, fan speeds, bypass status, filter/usage counters](docs/ha-dashboard.png)
+
+*Example Home Assistant dashboard built from the sensors in
+[`home-assistant/configuration.yaml.example`](home-assistant/configuration.yaml.example).*
+
 ## What this fork is for
 
 Bridging a Zehnder/StorkAir ComfoAir-family balanced ventilation unit
